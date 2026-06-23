@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Rewrite rule for client-side routing fallback (for Single Page Apps)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
