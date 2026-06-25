@@ -190,14 +190,18 @@ export const db = {
 
       const authUserId = authData.user.id;
 
-      // Step 2: Upsert profile (trigger may have already created it)
-      const { data: profile, error: pErr } = await supabase.from('profiles')
-        .upsert([{ id: authUserId, name: profileData.name, email: profileData.email, role: 'student' }])
+      // Step 2: Wait briefly for DB trigger to auto-create the profile row
+      await new Promise(r => setTimeout(r, 800));
+
+      // Step 3: Fetch or upsert profile using admin client (bypasses RLS)
+      const { data: profile, error: pErr } = await supabaseAdmin.from('profiles')
+        .upsert([{ id: authUserId, name: profileData.name, email: profileData.email, role: 'student' }],
+          { onConflict: 'id', ignoreDuplicates: false })
         .select().single();
       if (pErr) throw pErr;
 
-      // Step 3: Insert student row
-      const { data: student, error: sErr } = await supabase.from('students').insert([
+      // Step 4: Insert student row using admin client
+      const { data: student, error: sErr } = await supabaseAdmin.from('students').insert([
         { ...studentData, profile_id: authUserId }
       ]).select().single();
       if (sErr) throw sErr;
@@ -312,14 +316,18 @@ export const db = {
 
       const authUserId = authData.user.id;
 
-      // Step 2: Upsert profile (trigger may have already created it)
-      const { data: profile, error: pErr } = await supabase.from('profiles')
-        .upsert([{ id: authUserId, name: profileData.name, email: profileData.email, role: 'faculty' }])
+      // Step 2: Wait briefly for DB trigger to auto-create the profile row
+      await new Promise(r => setTimeout(r, 800));
+
+      // Step 3: Fetch or upsert profile using admin client (bypasses RLS)
+      const { data: profile, error: pErr } = await supabaseAdmin.from('profiles')
+        .upsert([{ id: authUserId, name: profileData.name, email: profileData.email, role: 'faculty' }],
+          { onConflict: 'id', ignoreDuplicates: false })
         .select().single();
       if (pErr) throw pErr;
 
-      // Step 3: Insert faculty row
-      const { data: faculty, error: fErr } = await supabase.from('faculty').insert([
+      // Step 4: Insert faculty row using admin client
+      const { data: faculty, error: fErr } = await supabaseAdmin.from('faculty').insert([
         { ...facultyData, profile_id: authUserId }
       ]).select().single();
       if (fErr) throw fErr;
