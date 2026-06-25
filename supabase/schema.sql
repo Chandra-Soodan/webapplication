@@ -181,15 +181,19 @@ CREATE POLICY "Allow student update own sports" ON sports_activities FOR UPDATE 
 );
 
 -- 9. Certificates policies
-CREATE POLICY "Allow read on certificates" ON certificates FOR SELECT USING (
-  (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin' OR 
-  EXISTS (SELECT 1 FROM students WHERE students.id = student_id AND students.profile_id = auth.uid())
+-- FIX: Use auth.role() and profile lookup instead of fragile JWT metadata check
+CREATE POLICY "Allow student or admin read certificates" ON certificates FOR SELECT USING (
+  auth.uid() IS NOT NULL AND (
+    EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
+    OR
+    EXISTS (SELECT 1 FROM students WHERE students.id = student_id AND students.profile_id = auth.uid())
+  )
 );
 CREATE POLICY "Allow student upload certificates" ON certificates FOR INSERT WITH CHECK (
   EXISTS (SELECT 1 FROM students WHERE students.id = student_id AND students.profile_id = auth.uid())
 );
 CREATE POLICY "Allow admin verify certificates" ON certificates FOR UPDATE USING (
-  (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
 );
 
 -- 10. Notifications policies
