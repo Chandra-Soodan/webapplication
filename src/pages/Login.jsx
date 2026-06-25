@@ -70,9 +70,48 @@ export const Login = ({ onLoginSuccess }) => {
     setError('');
     setLoading(true);
     try {
-      const session = await auth.login(mockEmail, 'password123');
+      let session;
+      try {
+        session = await auth.login(mockEmail, 'password123');
+      } catch (loginErr) {
+        // If login fails on live Supabase, try to register the mock account on the fly!
+        const isInvalidCreds = loginErr.message?.includes('Invalid login credentials') || 
+                               loginErr.status === 400 || 
+                               loginErr.message?.includes('invalid_credentials');
+        if (isInvalidCreds) {
+          console.log(`Demo account ${mockEmail} not found in Supabase. Registering on the fly...`);
+          
+          const defaultDeptId = departments[0]?.id || '';
+          
+          if (mockEmail === 'admin@college.edu') {
+            await auth.signup(mockEmail, 'password123', 'Dr. Sathish Kumar', 'admin', {});
+          } else if (mockEmail === 'alan@college.edu') {
+            await auth.signup(mockEmail, 'password123', 'Prof. Alan Turing', 'faculty', {
+              department_id: defaultDeptId,
+              employee_id: 'FAC-CSE-001',
+              designation: 'HOD / Professor'
+            });
+          } else if (mockEmail === 'john@college.edu') {
+            await auth.signup(mockEmail, 'password123', 'John Doe', 'student', {
+              department_id: defaultDeptId,
+              roll_number: 'CSE2201',
+              year: 3,
+              section: 'A',
+              admission_year: 2023
+            });
+          } else {
+            throw loginErr; // rethrow if not a standard demo account
+          }
+          
+          // Try logging in again after signup succeeds
+          session = await auth.login(mockEmail, 'password123');
+        } else {
+          throw loginErr;
+        }
+      }
       onLoginSuccess(session);
     } catch (err) {
+      console.error(err);
       setError(err.message || 'Quick login failed.');
     } finally {
       setLoading(false);

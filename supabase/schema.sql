@@ -125,16 +125,77 @@ ALTER TABLE sports_activities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE certificates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
--- Create policies (Example policies - in production, customize as needed)
--- Public read on departments
+-- Create policies
+-- 1. Departments policies
 CREATE POLICY "Allow public read on departments" ON departments FOR SELECT USING (true);
 CREATE POLICY "Allow admin edit on departments" ON departments FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
+  (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
 );
 
--- Profiles policies
-CREATE POLICY "Allow users to view all profiles" ON profiles FOR SELECT USING (true);
+-- 2. Profiles policies
+CREATE POLICY "Allow public read on profiles" ON profiles FOR SELECT USING (true);
 CREATE POLICY "Allow users to update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Allow signup profile insert" ON profiles FOR INSERT WITH CHECK (true);
+
+-- 3. Faculty policies
+CREATE POLICY "Allow public read on faculty" ON faculty FOR SELECT USING (true);
+CREATE POLICY "Allow admin edit on faculty" ON faculty FOR ALL USING (
+  (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+);
+CREATE POLICY "Allow faculty self edit" ON faculty FOR UPDATE USING (auth.uid() = profile_id);
+CREATE POLICY "Allow signup faculty insert" ON faculty FOR INSERT WITH CHECK (true);
+
+-- 4. Students policies
+CREATE POLICY "Allow public read on students" ON students FOR SELECT USING (true);
+CREATE POLICY "Allow admin edit on students" ON students FOR ALL USING (
+  (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+);
+CREATE POLICY "Allow student self edit" ON students FOR UPDATE USING (auth.uid() = profile_id);
+CREATE POLICY "Allow signup student insert" ON students FOR INSERT WITH CHECK (true);
+
+-- 5. Subjects policies
+CREATE POLICY "Allow public read on subjects" ON subjects FOR SELECT USING (true);
+CREATE POLICY "Allow admin edit on subjects" ON subjects FOR ALL USING (
+  (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+);
+
+-- 6. Attendance policies
+CREATE POLICY "Allow public read on attendance" ON attendance FOR SELECT USING (true);
+CREATE POLICY "Allow faculty edit on attendance" ON attendance FOR ALL USING (
+  (auth.jwt() -> 'user_metadata' ->> 'role') IN ('faculty', 'admin')
+);
+
+-- 7. Academic Marks policies
+CREATE POLICY "Allow public read on academic_marks" ON academic_marks FOR SELECT USING (true);
+CREATE POLICY "Allow faculty edit on academic_marks" ON academic_marks FOR ALL USING (
+  (auth.jwt() -> 'user_metadata' ->> 'role') IN ('faculty', 'admin')
+);
+
+-- 8. Sports Activities policies
+CREATE POLICY "Allow public read on sports_activities" ON sports_activities FOR SELECT USING (true);
+CREATE POLICY "Allow student write on sports_activities" ON sports_activities FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM students WHERE students.id = student_id AND students.profile_id = auth.uid())
+);
+CREATE POLICY "Allow student update own sports" ON sports_activities FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM students WHERE students.id = student_id AND students.profile_id = auth.uid())
+);
+
+-- 9. Certificates policies
+CREATE POLICY "Allow read on certificates" ON certificates FOR SELECT USING (
+  (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin' OR 
+  EXISTS (SELECT 1 FROM students WHERE students.id = student_id AND students.profile_id = auth.uid())
+);
+CREATE POLICY "Allow student upload certificates" ON certificates FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM students WHERE students.id = student_id AND students.profile_id = auth.uid())
+);
+CREATE POLICY "Allow admin verify certificates" ON certificates FOR UPDATE USING (
+  (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+);
+
+-- 10. Notifications policies
+CREATE POLICY "Allow user read own notifications" ON notifications FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Allow user update own notifications" ON notifications FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Allow system insert notifications" ON notifications FOR INSERT WITH CHECK (true);
 
 -- Trigger for syncing auth.users with profiles
 -- Note: When signing up from the application, metadata should include `role` and `name`
@@ -153,6 +214,6 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Trigger execution
--- CREATE TRIGGER on_auth_user_created
---   AFTER INSERT ON auth.users
---   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
