@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, supabaseAdmin, isSupabaseConfigured } from './supabase';
 import {
   mockDepartments,
   mockProfiles,
@@ -178,19 +178,30 @@ export const db = {
 
   async createStudent(studentData, profileData) {
     if (isSupabaseConfigured) {
-      // In Supabase, the profile is created automatically on Auth signup, 
-      // or we manually create a profile row if admin creates it.
-      // For this sample app's admin workflow, we insert into profiles and students:
-      const { data: profile, error: pErr } = await supabase.from('profiles').insert([
-        { id: profileData.id, name: profileData.name, email: profileData.email, role: 'student' }
-      ]).select().single();
+      // Step 1: Create the auth user via Supabase Auth Admin API.
+      // This generates a real auth.users row so profiles.id FK is valid.
+      const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
+        email: profileData.email,
+        password: profileData.password || 'TempPass@123',
+        email_confirm: true,
+        user_metadata: { name: profileData.name, role: 'student' }
+      });
+      if (authErr) throw authErr;
+
+      const authUserId = authData.user.id;
+
+      // Step 2: Upsert profile (trigger may have already created it)
+      const { data: profile, error: pErr } = await supabase.from('profiles')
+        .upsert([{ id: authUserId, name: profileData.name, email: profileData.email, role: 'student' }])
+        .select().single();
       if (pErr) throw pErr;
 
+      // Step 3: Insert student row
       const { data: student, error: sErr } = await supabase.from('students').insert([
-        { ...studentData, profile_id: profile.id }
+        { ...studentData, profile_id: authUserId }
       ]).select().single();
       if (sErr) throw sErr;
-      
+
       return { ...student, profiles: profile };
     } else {
       const profiles = getStorageItem('sm_profiles');
@@ -290,16 +301,29 @@ export const db = {
 
   async createFaculty(facultyData, profileData) {
     if (isSupabaseConfigured) {
-      const { data: profile, error: pErr } = await supabase.from('profiles').insert([
-        { id: profileData.id, name: profileData.name, email: profileData.email, role: 'faculty' }
-      ]).select().single();
+      // Step 1: Create the auth user via Supabase Auth Admin API.
+      const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
+        email: profileData.email,
+        password: profileData.password || 'TempPass@123',
+        email_confirm: true,
+        user_metadata: { name: profileData.name, role: 'faculty' }
+      });
+      if (authErr) throw authErr;
+
+      const authUserId = authData.user.id;
+
+      // Step 2: Upsert profile (trigger may have already created it)
+      const { data: profile, error: pErr } = await supabase.from('profiles')
+        .upsert([{ id: authUserId, name: profileData.name, email: profileData.email, role: 'faculty' }])
+        .select().single();
       if (pErr) throw pErr;
 
+      // Step 3: Insert faculty row
       const { data: faculty, error: fErr } = await supabase.from('faculty').insert([
-        { ...facultyData, profile_id: profile.id }
+        { ...facultyData, profile_id: authUserId }
       ]).select().single();
       if (fErr) throw fErr;
-      
+
       return { ...faculty, profiles: profile };
     } else {
       const profiles = getStorageItem('sm_profiles');
